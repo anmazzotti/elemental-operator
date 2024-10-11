@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/rancher/elemental-operator/pkg/elementalcli"
 	"github.com/rancher/elemental-operator/pkg/install"
 	"github.com/rancher/elemental-operator/pkg/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/twpayne/go-vfs"
 )
 
@@ -35,13 +37,6 @@ var (
 )
 
 func newUpgradeCommand() *cobra.Command {
-	var hostDir string
-	var cloudConfigPath string
-	var recovery bool
-	var recoveryOnly bool
-	var debug bool
-	var system string
-	var correlationID string
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
@@ -59,19 +54,17 @@ func newUpgradeCommand() *cobra.Command {
 			// If system is not shutting down we can proceed.
 			upgradeConfig := elementalcli.UpgradeConfig{
 				Debug:        debug,
-				Recovery:     recovery,
-				RecoveryOnly: recoveryOnly,
-				System:       system,
+				Recovery:     viper.GetBool("recovery"),
+				RecoveryOnly: viper.GetBool("recovery-only"),
+				System:       viper.GetString("system"),
 				Bootloader:   true,
 			}
 			upgradeContext := install.UpgradeContext{
 				Config:          upgradeConfig,
-				HostDir:         hostDir,
-				CloudConfigPath: cloudConfigPath,
-				CorrelationID:   correlationID,
+				HostDir:         viper.GetString("host-dir"),
+				CloudConfigPath: viper.GetString("cloud-config"),
+				CorrelationID:   viper.GetString("correlation-id"),
 			}
-
-			log.Infof("Upgrade context: %+v", upgradeContext)
 
 			installer := install.NewInstaller(vfs.OSFS, nil, nil)
 
@@ -84,23 +77,42 @@ func newUpgradeCommand() *cobra.Command {
 			// If the machine needs a reboot after an upgrade has been applied,
 			// so that consumers can try again after reboot to validate the upgrade has been applied successfully.
 			if needsReboot {
-				log.Infof("Rebooting machine after %s upgrade", correlationID)
+				log.Infof("Rebooting machine after %s upgrade", upgradeContext.CorrelationID)
 				reboot()
 				return ErrRebooting
 			}
 			// Upgrade has been applied successfully, nothing to do.
-			log.Infof("Upgrade %s applied successfully", correlationID)
+			log.Infof("Upgrade %s applied successfully", upgradeContext.CorrelationID)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&hostDir, "host-dir", "/host", "The machine root directory where to apply the upgrade")
-	cmd.Flags().StringVar(&cloudConfigPath, "cloud-config", "/run/data/cloud-config", "The path of a cloud-config file to install on the machine during upgrade")
-	cmd.Flags().StringVar(&system, "system", "dir:/", "The system image uri or filesystem location to upgrade to")
-	cmd.Flags().StringVar(&correlationID, "correlation-id", "", "A correlationID to label the upgrade snapshot with")
-	cmd.Flags().BoolVar(&recovery, "recovery", false, "Upgrades the recovery partition together with the system")
-	cmd.Flags().BoolVar(&recoveryOnly, "recovery-only", false, "Upgrades the recovery partition only")
-	cmd.Flags().BoolVar(&debug, "debug", true, "Prints debug logs when performing upgrade")
+	viper.AutomaticEnv()
+	replacer := strings.NewReplacer("-", "_")
+	viper.SetEnvKeyReplacer(replacer)
+	viper.SetEnvPrefix("ELEMENTAL_REGISTER_UPGRADE")
+
+	cmd.Flags().String("host-dir", "/host", "The machine root directory where to apply the upgrade")
+	_ = viper.BindPFlag("host-dir", cmd.Flags().Lookup("host-dir"))
+
+	cmd.Flags().String("cloud-config", "/run/data/cloud-config", "The path of a cloud-config file to install on the machine during upgrade")
+	_ = viper.BindPFlag("cloud-config", cmd.Flags().Lookup("cloud-config"))
+
+	cmd.Flags().String("system", "dir:/", "The system image uri or filesystem location to upgrade to")
+	_ = viper.BindPFlag("system", cmd.Flags().Lookup("system"))
+
+	cmd.Flags().String("correlation-id", "", "A correlationID to label the upgrade snapshot with")
+	_ = viper.BindPFlag("correlation-id", cmd.Flags().Lookup("correlation-id"))
+
+	cmd.Flags().Bool("recovery", false, "Upgrades the recovery partition together with the system")
+	_ = viper.BindPFlag("recovery", cmd.Flags().Lookup("recovery"))
+
+	cmd.Flags().Bool("recovery-only", false, "Upgrades the recovery partition only")
+	_ = viper.BindPFlag("recovery-only", cmd.Flags().Lookup("recovery-only"))
+
+	cmd.Flags().Bool("debug", true, "Prints debug logs when performing upgrade")
+	_ = viper.BindPFlag("debug", cmd.Flags().Lookup("debug"))
+
 	return cmd
 }
 

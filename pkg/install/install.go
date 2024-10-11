@@ -73,6 +73,7 @@ const (
 	// Upgrade constants
 	upgradeCloudConfigPath = "/oem/90_operator.yaml"
 	correlationIDLabelKey  = "correlationID"
+	upgradeRunDir          = "/run/elemental"
 )
 
 var (
@@ -607,12 +608,16 @@ func (i *installer) cleanupResetPlan() error {
 func (i *installer) UpgradeElemental(context UpgradeContext) (bool, error) {
 	log.Infof("Applying upgrade: %s", context.CorrelationID)
 
-	runner := elementalcli.NewRunner()
+	runDir := filepath.Join(context.HostDir, upgradeRunDir)
+	if err := vfs.MkdirAll(i.fs, runDir, os.ModePerm); err != nil {
+		return false, fmt.Errorf("creating directory '%s': %w", runDir, err)
+	}
 
 	if err := i.applyCloudConfig(context.HostDir, context.CloudConfigPath); err != nil {
 		return false, fmt.Errorf("applying upgrade cloud config: %w", err)
 	}
 
+	runner := elementalcli.NewRunner()
 	elementalState, err := runner.GetState()
 	if err != nil {
 		return false, fmt.Errorf("reading installation state: %w", err)

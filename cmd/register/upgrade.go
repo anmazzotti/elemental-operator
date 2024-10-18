@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+
 	"strings"
 
 	"github.com/rancher/elemental-operator/pkg/elementalcli"
@@ -29,6 +29,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/twpayne/go-vfs"
+
+	"k8s.io/utils/exec"
+	"k8s.io/utils/nsenter"
 )
 
 var (
@@ -42,16 +45,6 @@ func newUpgradeCommand() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Upgrades the machine",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			// If the system is shutting down, return an error so we can try again on next reboot.
-			alreadyShuttingDown, err := isSystemShuttingDown()
-			if err != nil {
-				return fmt.Errorf("determining if system is running: %w", err)
-			}
-			if alreadyShuttingDown {
-				return ErrAlreadyShuttingDown
-			}
-
-			// If system is not shutting down we can proceed.
 			upgradeConfig := elementalcli.UpgradeConfig{
 				Debug:        debug,
 				Recovery:     viper.GetBool("recovery"),
@@ -66,6 +59,16 @@ func newUpgradeCommand() *cobra.Command {
 				CorrelationID:   viper.GetString("correlation-id"),
 			}
 
+			// If the system is shutting down, return an error so we can try again on next reboot.
+			alreadyShuttingDown, err := isSystemShuttingDown(upgradeContext.HostDir)
+			if err != nil {
+				return fmt.Errorf("determining if system is running: %w", err)
+			}
+			if alreadyShuttingDown {
+				return ErrAlreadyShuttingDown
+			}
+
+			// If system is not shutting down we can proceed.
 			installer := install.NewInstaller(vfs.OSFS, nil, nil)
 
 			needsReboot, err := installer.UpgradeElemental(upgradeContext)
@@ -78,7 +81,7 @@ func newUpgradeCommand() *cobra.Command {
 			// so that consumers can try again after reboot to validate the upgrade has been applied successfully.
 			if needsReboot {
 				log.Infof("Rebooting machine after %s upgrade", upgradeContext.CorrelationID)
-				reboot()
+				reboot(upgradeContext.HostDir)
 				return ErrRebooting
 			}
 			// Upgrade has been applied successfully, nothing to do.
@@ -116,11 +119,15 @@ func newUpgradeCommand() *cobra.Command {
 	return cmd
 }
 
-func isSystemShuttingDown() (bool, error) {
-	cmd := exec.Command("nsenter")
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
-	cmd.Args = []string{"-i", "-m", "-t", "1", "--", "systemctl is-system-running"}
+func isSystemShuttingDown(hostDir string) (bool, error) {
+	ex := exec.New()
+	nsEnter, err := nsenter.NewNsenter(hostDir, ex)
+	if err != nil {
+		return false, fmt.Errorf("initializing nsenter: %w", err)
+	}
+	cmd := nsEnter.Command("systemctl", "is-system-running")
+	cmd.SetStdin(os.Stdin)
+	cmd.SetStderr(os.Stderr)
 	output, err := cmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("running: systemctl is-system-running: %w", err)
@@ -131,12 +138,16 @@ func isSystemShuttingDown() (bool, error) {
 	return false, nil
 }
 
-func reboot() {
-	cmd := exec.Command("nsenter")
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-	cmd.Args = []string{"-i", "-m", "-t", "1", "--", "reboot"}
+func reboot(hostDir string) {
+	ex := exec.New()
+	nsEnter, err := nsenter.NewNsenter(hostDir, ex)
+	if err != nil {
+		log.Errorf("Coult not initialize nsenter: %s", err.Error())
+	}
+	cmd := nsEnter.Command("reboot")
+	cmd.SetStdin(os.Stdin)
+	cmd.SetStderr(os.Stderr)
+	cmd.SetStdout(os.Stdout)
 	if err := cmd.Run(); err != nil {
 		log.Errorf("Could not reboot: %s", err)
 	}

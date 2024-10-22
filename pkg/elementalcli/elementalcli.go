@@ -130,6 +130,10 @@ func (r *runner) Upgrade(conf UpgradeConfig) error {
 		installerOpts = append(installerOpts, "--bootloader")
 	}
 
+	if len(conf.SnapshotLabels) > 0 {
+		installerOpts = append(installerOpts, "--snapshot-labels", formatSnapshotLabels(conf.SnapshotLabels))
+	}
+
 	cmd := exec.Command("elemental")
 	environmentVariables := mapToUpgradeEnv(conf)
 	cmd.Env = append(os.Environ(), environmentVariables...)
@@ -202,7 +206,6 @@ func mapToUpgradeEnv(conf UpgradeConfig) []string {
 	var variables []string
 	// See GetUpgradeKeyEnvMap() in https://github.com/rancher/elemental-toolkit/blob/main/pkg/constants/constants.go
 	variables = append(variables, formatEV("ELEMENTAL_UPGRADE_RECOVERY", strconv.FormatBool(conf.Recovery)))
-	variables = append(variables, formatEV("ELEMENTAL_UPGRADE_SNAPSHOT_LABELS", formatSnapshotLabels(conf.SnapshotLabels)))
 	if conf.RecoveryOnly {
 		variables = append(variables, formatEV("ELEMENTAL_UPGRADE_RECOVERY_SYSTEM", conf.System))
 	} else {
@@ -215,6 +218,7 @@ func formatEV(key string, value string) string {
 	return fmt.Sprintf("%s=%s", key, value)
 }
 
+// --snapshot-labels foo=bar,version=v1.2.3
 func formatSnapshotLabels(labels map[string]string) string {
 	formattedLabels := []string{}
 	for key, value := range labels {

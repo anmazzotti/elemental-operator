@@ -617,6 +617,10 @@ func (i *installer) UpgradeElemental(context UpgradeContext) (bool, error) {
 		return false, fmt.Errorf("applying upgrade cloud config: %w", err)
 	}
 
+	if err := i.mountDirs(upgradeMounts, context.HostDir); err != nil {
+		return false, fmt.Errorf("mounting host directories: %w", err)
+	}
+
 	runner := elementalcli.NewRunner()
 	elementalState, err := runner.GetState()
 	if err != nil {
@@ -629,9 +633,6 @@ func (i *installer) UpgradeElemental(context UpgradeContext) (bool, error) {
 	}
 
 	log.Infof("Applying upgrade %s", context.CorrelationID)
-	if err := i.mountDirs(upgradeMounts, context.HostDir); err != nil {
-		return false, fmt.Errorf("mounting host directories: %w", err)
-	}
 	if err := runner.Upgrade(context.Config); err != nil {
 		return false, fmt.Errorf("applying upgrade '%s': %w", context.CorrelationID, err)
 	}
@@ -714,7 +715,7 @@ func (i *installer) mountDirs(mounts []string, hostDir string) error {
 		cmd.Stdout = os.Stdout
 		cmd.Stdin = os.Stdin
 		cmd.Stderr = os.Stderr
-		cmd.Args = []string{"--rbind", hostMount, mount}
+		cmd.Args = []string{"mount", "--rbind", hostMount, mount}
 		log.Debugf("running: mount %s", strings.Join(cmd.Args, " "))
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("mounting '%s': %w", hostMount, err)

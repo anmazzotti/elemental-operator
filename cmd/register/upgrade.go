@@ -35,8 +35,9 @@ import (
 )
 
 var (
-	ErrRebooting           = errors.New("Machine needs reboot after upgrade")
-	ErrAlreadyShuttingDown = errors.New("System is already shutting down")
+	ErrRebooting            = errors.New("Machine needs reboot after upgrade")
+	ErrAlreadyShuttingDown  = errors.New("System is already shutting down")
+	ErrMissingCorrelationID = errors.New("Missing upgrade correlation ID")
 )
 
 func newUpgradeCommand() *cobra.Command {
@@ -57,6 +58,11 @@ func newUpgradeCommand() *cobra.Command {
 				HostDir:         viper.GetString("host-dir"),
 				CloudConfigPath: viper.GetString("cloud-config"),
 				CorrelationID:   viper.GetString("correlation-id"),
+			}
+
+			// For sanity, this needs to be verified or the upgrade process may end up in an infinite loop
+			if len(upgradeContext.CorrelationID) == 0 {
+				return ErrMissingCorrelationID
 			}
 
 			// If the system is shutting down, return an error so we can try again on next reboot.

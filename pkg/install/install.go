@@ -632,6 +632,9 @@ func (i *installer) UpgradeElemental(context UpgradeContext) (bool, error) {
 		return false, nil
 	}
 
+	// Prepare Snapshot labels
+	context.Config.SnapshotLabels = map[string]string{correlationIDLabelKey: context.CorrelationID}
+
 	log.Infof("Applying upgrade %s", context.CorrelationID)
 	if err := runner.Upgrade(context.Config); err != nil {
 		return false, fmt.Errorf("applying upgrade '%s': %w", context.CorrelationID, err)

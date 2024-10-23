@@ -47,7 +47,7 @@ func newUpgradeCommand() *cobra.Command {
 		Short: "Upgrades the machine",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			upgradeConfig := elementalcli.UpgradeConfig{
-				Debug:        debug,
+				Debug:        viper.GetBool("debug"),
 				Recovery:     viper.GetBool("recovery"),
 				RecoveryOnly: viper.GetBool("recovery-only"),
 				System:       viper.GetString("system"),
@@ -58,6 +58,10 @@ func newUpgradeCommand() *cobra.Command {
 				HostDir:         viper.GetString("host-dir"),
 				CloudConfigPath: viper.GetString("cloud-config"),
 				CorrelationID:   viper.GetString("correlation-id"),
+			}
+
+			if upgradeConfig.Debug {
+				log.EnableDebugLogging()
 			}
 
 			// For sanity, this needs to be verified or the upgrade process may end up in an infinite loop

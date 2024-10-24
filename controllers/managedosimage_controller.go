@@ -339,6 +339,7 @@ func (r *ManagedOSImageReconciler) newFleetBundleResources(ctx context.Context, 
 				Tolerations: []corev1.Toleration{{
 					Operator: corev1.TolerationOpExists,
 				}},
+				Exclusive:          true,
 				ServiceAccountName: uniqueName,
 				NodeSelector:       selector,
 				Cordon:             cordon,
